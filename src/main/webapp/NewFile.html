@@ -1,0 +1,361 @@
+package com.controller;
+
+import com.model.User;
+import com.dao.UserDao;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+import java.io.IOException;
+
+@WebServlet("/auth")
+public class AuthServlet extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String username = request.getParameter("username");
+        String password = request.getParameter("password");
+        UserDao userDao = new UserDao();
+        User user = userDao.validateUser(username, password);
+
+        if (user != null) {
+            HttpSession session = request.getSession();
+            session.setAttribute("user", user);
+            response.sendRedirect("dashboard.jsp");
+        } else {
+            response.sendRedirect("login.jsp?error=true");
+        }
+    }
+}
+
+package com.dao;
+
+import com.model.Task;
+import com.util.Connect;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class TaskDao {
+    public void addTask(Task task) {
+        String sql = "INSERT INTO tasks (employee_name, role, project, date, start_time, end_time, task_category, description, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, task.getEmployeeName());
+            stmt.setString(2, task.getRole());
+            stmt.setString(3, task.getProject());
+            stmt.setDate(4, new java.sql.Date(task.getDate().getTime()));
+            stmt.setTime(5, new java.sql.Time(task.getStartTime().getTime()));
+            stmt.setTime(6, new java.sql.Time(task.getEndTime().getTime()));
+            stmt.setString(7, task.getTaskCategory());
+            stmt.setString(8, task.getDescription());
+            stmt.setInt(9, task.getUserId());
+
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<Task> getTasksByUserId(int userId) {
+        List<Task> tasks = new ArrayList<>();
+        String sql = "SELECT * FROM tasks WHERE user_id = ?";
+
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, userId);
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                Task task = new Task();
+                task.setTaskId(rs.getInt("task_id"));
+                task.setEmployeeName(rs.getString("employee_name"));
+                task.setRole(rs.getString("role"));
+                task.setProject(rs.getString("project"));
+                task.setDate(rs.getDate("date"));
+                task.setStartTime(rs.getTime("start_time"));
+                task.setEndTime(rs.getTime("end_time"));
+                task.setTaskCategory(rs.getString("task_category"));
+                task.setDescription(rs.getString("description"));
+                task.setUserId(rs.getInt("user_id"));
+
+                tasks.add(task);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return tasks;
+    }
+}
+public List<Task> getTasksByEmployeeNameAndRole(String employeeName, String role) {
+        List<Task> tasks = new ArrayList<>();
+        String sql = "SELECT * FROM tasks WHERE employee_name = ? AND !role ='Manager'";
+
+        try (Connection conn = Connect.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, employeeName);
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                Task task = new Task();
+                task.setTaskId(rs.getInt("task_id"));
+                task.setEmployeeName(rs.getString("employee_name"));
+                task.setRole(rs.getString("role"));
+                task.setProject(rs.getString("project"));
+                task.setDate(rs.getDate("date"));
+                task.setStartTime(rs.getTime("start_time"));
+                task.setEndTime(rs.getTime("end_time"));
+                task.setTaskCategory(rs.getString("task_category"));
+                task.setDescription(rs.getString("description"));
+                task.setUsername(rs.getString("username"));
+                task.setPassword(rs.getString("password"));
+                task.setUserId(rs.getString("user_id"));
+
+                tasks.add(task);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return tasks;
+    }
+    
+    public void deleteTask(int taskId ) {
+        String sql = "DELETE FROM tasks WHERE task_id=? AND role!= 'Manager'";
+
+        try (Connection conn = Connect.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, taskId);
+
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    
+    private void viewTasksById(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        int project = Integer.parseInt(request.getParameter("taskId"));
+
+        if (project >0) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing project parameter");
+            return;
+        }
+
+        AdminDao adminDao = new AdminDao();
+        List<Task> tasks = adminDao.getTasksById(project);
+
+        request.setAttribute("tasks", tasks);
+        request.getRequestDispatcher("/AdminTasksByProject.jsp").forward(request, response);
+    }
+    
+    
+    <%@ page import="java.util.List" %>
+<%@ page import="com.dao.AdminDao" %>
+<%@ page import="com.model.Task" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tasks by Project and Date</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tasks by Project and Date</h1>
+
+    <form method="get" action="TasksByProjectAndDate.jsp">
+        <label for="project">Project:</label>
+        <input type="text" id="project" name="project" required>
+        <br><br>
+        <label for="date">Date (yyyy-mm-dd):</label>
+        <input type="text" id="date" name="date" required>
+        <br><br>
+        <input type="submit" value="Search">
+    </form>
+
+    <%
+        String project = request.getParameter("project");
+        String date = request.getParameter("date");
+
+        if (project != null && date != null) {
+            AdminDao adminDao = new AdminDao();
+            List<Task> tasks = adminDao.getTaskbyProjectandDate(project, date);
+
+            if (tasks.isEmpty()) {
+                out.println("<p>No tasks found for project: " + project + " on date: " + date + "</p>");
+            } else {
+    %>
+                <h2>Tasks for project: <%= project %> on date: <%= date %></h2>
+                <table>
+                    <tr>
+                        <th>Task ID</th>
+                        <th>Employee Name</th>
+                        <th>Role</th>
+                        <th>Project</th>
+                        <th>Date</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Task Category</th>
+                        <th>Description</th>
+                        <th>Username</th>
+                        <th>Password</th>
+                        <th>User ID</th>
+                    </tr>
+                    <%
+                        for (Task task : tasks) {
+                    %>
+                    <tr>
+                        <td><%= task.getTaskId() %></td>
+                        <td><%= task.getEmployeeName() %></td>
+                        <td><%= task.getRole() %></td>
+                        <td><%= task.getProject() %></td>
+                        <td><%= task.getDate() %></td>
+                        <td><%= task.getStartTime() %></td>
+                        <td><%= task.getEndTime() %></td>
+                        <td><%= task.getTaskCategory() %></td>
+                        <td><%= task.getDescription() %></td>
+                        <td><%= task.getUsername() %></td>
+                        <td><%= task.getPassword() %></td>
+                        <td><%= task.getUserId() %></td>
+                    </tr>
+                    <%
+                        }
+                    %>
+                </table>
+    <%
+            }
+        }
+    %>
+</body>
+</html>
+    
+    
+    
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ page import="java.text.SimpleDateFormat" %>
+<%@ page import="java.util.List" %>
+<%@ page import="com.model.Task" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tasks by ID</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .button-link {
+            text-decoration: none;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 4px;
+        }
+        .button-link:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tasks by ID</h1>
+    <form method="post" action="AdminServlet">
+        <input type="hidden" name="action" value="viewById">
+        <label for="taskId">Task ID:</label>
+        <input type="number" id="taskId" name="taskId" required>
+        <input type="submit" value="View Task">
+        <a href="managerAdminDashboard.jsp" class="button-link">Go Back</a>
+        <a href="logout.jsp" class="button-link">Logout</a>
+    </form>
+
+    <%
+        List<Task> tasks = (List<Task>) request.getAttribute("tasks");
+        String message = (String) request.getAttribute("message");
+        if (message != null) {
+            out.println("<p>" + message + "</p>");
+        } else if (tasks != null && !tasks.isEmpty()) {
+    %>
+    <table>
+        <thead>
+            <tr>
+                <th>Task ID</th>
+                <th>Employee Name</th>
+                <th>Role</th>
+                <th>Project</th>
+                <th>Date</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Task Category</th>
+                <th>Description</th>
+                <th>Username</th>
+                <th>Password</th>
+                <th>User ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            <%
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
+                for (Task task : tasks) {
+            %>
+            <tr>
+                <td><%= task.getTaskId() %></td>
+                <td><%= task.getEmployeeName() %></td>
+                <td><%= task.getRole() %></td>
+                <td><%= task.getProject() %></td>
+                <td><%= dateFormat.format(task.getDate()) %></td>
+                <td><%= timeFormat.format(task.getStartTime()) %></td>
+                <td><%= timeFormat.format(task.getEndTime()) %></td>
+                <td><%= task.getTaskCategory() %></td>
+                <td><%= task.getDescription() %></td>
+                <td><%= task.getUsername() %></td>
+                <td><%= task.getPassword() %></td>
+                <td><%= task.getUserId() %></td>
+            </tr>
+            <% } %>
+        </tbody>
+    </table>
+    <% 
+        } else {
+            out.println("<p>No task found for the specified ID.</p>");
+        } 
+    %>
+</body>
+</html>
+    

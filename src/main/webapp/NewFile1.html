@@ -1,0 +1,117 @@
+<%@ page import="java.util.List" %>
+<%@ page import="java.util.ArrayList" %>
+<%@ page import="java.util.Date" %>
+<%@ page import="java.util.Calendar" %>
+<%@ page import="com.dao.AdminDao" %>
+<%@ page import="com.model.Task" %>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tasks by Project and Date</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+</head>
+<body>
+    <h1>Tasks by Project and Date</h1>
+
+    <form method="get" action="TasksByProjectAndDate.jsp">
+        <label for="project">Project:</label>
+        <input type="text" id="project" name="project" required>
+        <br><br>
+        <label for="date">Date (yyyy-mm-dd):</label>
+        <input type="text" id="date" name="date" required>
+        <br><br>
+        <input type="submit" value="Search">
+    </form>
+
+    <%
+        String project = request.getParameter("project");
+        String dateStr = request.getParameter("date");
+
+        if (project != null && dateStr != null) {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+            Date date = null;
+            try {
+                date = sdf.parse(dateStr);
+            } catch (java.text.ParseException e) {
+                e.printStackTrace();
+            }
+
+            if (date != null) {
+                AdminDao adminDao = new AdminDao();
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(date);
+                cal.set(Calendar.DAY_OF_WEEK, cal.getFirstDayOfWeek());
+
+                List<Date> weekDates = new ArrayList<>();
+                for (int i = 0; i < 7; i++) {
+                    weekDates.add(cal.getTime());
+                    cal.add(Calendar.DAY_OF_MONTH, 1);
+                }
+
+                int[] tasksPerDay = new int[7];
+                for (int i = 0; i < 7; i++) {
+                    String currentDateStr = sdf.format(weekDates.get(i));
+                    List<Task> tasks = adminDao.getTaskbyProjectandDate(project, currentDateStr);
+                    tasksPerDay[i] = tasks.size();
+                }
+
+                // Prepare data for Google Charts
+                StringBuilder chartData = new StringBuilder();
+                chartData.append("[['Day', 'Number of Tasks'],");
+                String[] days = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+                for (int i = 0; i < 7; i++) {
+                    chartData.append("['").append(days[i]).append("', ").append(tasksPerDay[i]).append("]");
+                    if (i < 6) chartData.append(",");
+                }
+                chartData.append("]");
+    %>
+
+    <script type="text/javascript">
+        google.charts.load('current', {'packages':['corechart']});
+        google.charts.setOnLoadCallback(drawChart);
+
+        function drawChart() {
+            var data = google.visualization.arrayToDataTable(<%= chartData.toString() %>);
+
+            var options = {
+                title: 'Tasks per Day for Project: <%= project %>',
+                hAxis: {
+                    title: 'Day of the Week',
+                },
+                vAxis: {
+                    title: 'Number of Tasks',
+                },
+                legend: 'none'
+            };
+
+            var chart = new google.visualization.ColumnChart(document.getElementById('chart_div'));
+
+            chart.draw(data, options);
+        }
+    </script>
+
+    <h2>Tasks for project: <%= project %> during the week of: <%= sdf.format(weekDates.get(0)) %></h2>
+    <div id="chart_div" style="width: 900px; height: 500px;"></div>
+
+    <%
+            }
+        }
+    %>
+</body>
+</html>
